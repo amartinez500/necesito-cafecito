@@ -104,7 +104,8 @@ create table if not exists orders (
   pickup_time timestamptz not null,
   payment_method text not null check (payment_method in ('online', 'counter')),
   payment_status text not null default 'unpaid' check (payment_status in ('unpaid', 'paid')),
-  status text not null default 'new' check (status in ('new', 'brewing', 'ready', 'completed')),
+  status text not null default 'new'
+    check (status in ('awaiting_payment', 'new', 'brewing', 'ready', 'completed')),
   total numeric(10,2) not null,
   created_at timestamptz not null default now()
 );
@@ -112,6 +113,15 @@ create table if not exists orders (
 -- Table already existed before customer_email was added — this is a
 -- no-op on a fresh database, and adds the column on an existing one.
 alter table orders add column if not exists customer_email text;
+
+-- 'awaiting_payment': an online order gets created in this state before the
+-- customer finishes paying on Stripe. If they abandon the payment page, the
+-- order just stays here forever, invisible to the staff board's ['new',
+-- 'brewing', 'ready'] filter — no ghost/unpaid orders cluttering the queue.
+-- The Stripe webhook flips it to 'new' only once payment is confirmed.
+alter table orders drop constraint if exists orders_status_check;
+alter table orders add constraint orders_status_check
+  check (status in ('awaiting_payment', 'new', 'brewing', 'ready', 'completed'));
 
 create table if not exists order_items (
   id uuid primary key default gen_random_uuid(),

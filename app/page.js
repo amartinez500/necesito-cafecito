@@ -21,6 +21,11 @@ const MENU_CATEGORIES = [
         id: 1,
         name: 'Mazapan',
         photo: '/menu/mazapan-iced-coffee.jpg',
+        // Which part of the photo stays visible when it's cropped to fit the
+        // frame. 'center' by default — try 'top', 'bottom', 'left', 'right',
+        // or a percentage like '50% 20%' (the second number is vertical:
+        // lower % shows more of the top of the photo).
+        photoPosition: 'top',
         sizes: [
           { id: 's', label: '16oz', price: 4.0 },
           { id: 'l', label: '24oz', price: 7.0 },
@@ -31,6 +36,7 @@ const MENU_CATEGORIES = [
         id: 2,
         name: 'Horchata',
         photo: '/menu/horchata-iced-coffee.jpg',
+        photoPosition: 'center',
         sizes: [
           { id: 's', label: '16oz', price: 4.0 },
           { id: 'l', label: '24oz', price: 7.0 },
@@ -49,6 +55,7 @@ const MENU_CATEGORIES = [
         id: 3,
         name: 'Cinnamon Roll Shaken Espresso',
         photo: '/menu/cinnamon-roll-shaken-espresso.jpg',
+        photoPosition: 'center',
         sizes: [{ id: 's', label: '16oz', price: 6.0 }],
         addOns: COLD_FOAM,
       },
@@ -56,6 +63,7 @@ const MENU_CATEGORIES = [
         id: 4,
         name: 'Snickers Latte',
         photo: '/menu/snickers-latte.jpg',
+        photoPosition: '60% 20%',
         sizes: [{ id: 's', label: '16oz', price: 6.0 }],
         addOns: COLD_FOAM,
       },
@@ -63,6 +71,7 @@ const MENU_CATEGORIES = [
         id: 5,
         name: 'Mazapan Latte',
         photo: '/menu/mazapan-latte.jpg',
+        photoPosition: 'center',
         sizes: [{ id: 's', label: '16oz', price: 6.0 }],
         addOns: COLD_FOAM,
       },
@@ -70,6 +79,7 @@ const MENU_CATEGORIES = [
         id: 6,
         name: 'Horchata Latte',
         photo: '/menu/horchata-latte.jpg',
+        photoPosition: 'center',
         sizes: [{ id: 's', label: '16oz', price: 6.0 }],
         addOns: COLD_FOAM,
       },
@@ -111,7 +121,7 @@ function generatePickupTimes() {
 // Shows the drink's photo, or a friendly placeholder if the file isn't in
 // /public yet (or fails to load) — new menu items work right away and just
 // need a real photo dropped in later, no code changes required.
-function DrinkPhoto({ src, alt }) {
+function DrinkPhoto({ src, alt, position = 'center' }) {
   const [failed, setFailed] = useState(false);
 
   if (!src || failed) {
@@ -132,6 +142,7 @@ function DrinkPhoto({ src, alt }) {
         fill
         sizes="(max-width: 448px) 100vw, 448px"
         className="object-cover"
+        style={{ objectPosition: position }}
         onError={() => setFailed(true)}
       />
     </div>
@@ -199,17 +210,28 @@ export default function Home() {
     );
   }
 
-  function setSelectionSize(itemId, sizeId) {
+  // Both setters below always write a complete { size, addOn } object, using
+  // prev (guaranteed up to date) rather than spreading whatever partial
+  // selection may already exist — a partial spread was the bug: clicking
+  // Cold Foam before ever touching a size button produced { addOn: '...' }
+  // with no size field, which crashed price calculations on the next render.
+  function setSelectionSize(item, sizeId) {
     setSelections((prev) => ({
       ...prev,
-      [itemId]: { ...prev[itemId], size: sizeId },
+      [item.id]: {
+        size: sizeId,
+        addOn: prev[item.id]?.addOn ?? null,
+      },
     }));
   }
 
-  function setSelectionAddOn(itemId, addOnId) {
+  function setSelectionAddOn(item, addOnId) {
     setSelections((prev) => ({
       ...prev,
-      [itemId]: { ...prev[itemId], addOn: addOnId },
+      [item.id]: {
+        size: prev[item.id]?.size ?? item.sizes[0].id,
+        addOn: addOnId,
+      },
     }));
   }
 
@@ -243,6 +265,49 @@ export default function Home() {
     setIsSubmitting(true);
     setSubmitError(null);
 
+    // Resolve each cup's cart entry into the shape order_items expects.
+    // Used by both payment paths below.
+    const orderItems = cart.map((cup) => {
+      const item = ALL_ITEMS.find((m) => m.id === cup.itemId);
+      const size = item.sizes.find((s) => s.id === cup.size);
+      const addOn = item.addOns.find((a) => a.id === cup.addOn);
+      return {
+        item_name: item.name,
+        size_label: size.label,
+        addon_name: addOn ? addOn.name : null,
+        price: cupPrice(cup),
+      };
+    });
+
+    if (paymentMethod === 'online') {
+      const response = await fetch('/api/checkout', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          customerName,
+          customerEmail: customerEmail.trim() || null,
+          pickupTime: pickupTime.toISOString(),
+          orderItems,
+          total,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok || !data.url) {
+        setSubmitError('Something went wrong starting checkout. Please try again.');
+        setIsSubmitting(false);
+        return;
+      }
+
+      // A real page navigation to Stripe's hosted payment page, not a
+      // fetch — the customer actually leaves our site to pay, then
+      // Stripe sends them back to /order-confirmed afterward.
+      window.location.assign(data.url);
+      return;
+    }
+
+    // Pay at counter: no Stripe involved, insert directly like before.
     const supabase = createClient();
 
     // Generate the order's id ourselves and send it in the insert.
@@ -265,20 +330,9 @@ export default function Home() {
       return;
     }
 
-    const orderItems = cart.map((cup) => {
-      const item = ALL_ITEMS.find((m) => m.id === cup.itemId);
-      const size = item.sizes.find((s) => s.id === cup.size);
-      const addOn = item.addOns.find((a) => a.id === cup.addOn);
-      return {
-        order_id: orderId,
-        item_name: item.name,
-        size_label: size.label,
-        addon_name: addOn ? addOn.name : null,
-        price: cupPrice(cup),
-      };
-    });
-
-    const { error: itemsError } = await supabase.from('order_items').insert(orderItems);
+    const { error: itemsError } = await supabase
+      .from('order_items')
+      .insert(orderItems.map((item) => ({ ...item, order_id: orderId })));
 
     if (itemsError) {
       setSubmitError('Something went wrong placing your order. Please try again.');
@@ -380,7 +434,7 @@ export default function Home() {
                       const currentPrice = selectedSize.price + (selectedAddOn ? selectedAddOn.price : 0);
                       return (
                         <div key={item.id} className="bg-white rounded-2xl p-5 shadow-[0_2px_12px_rgba(74,50,34,0.06)] border border-[#F0E4D3]">
-                          <DrinkPhoto src={item.photo} alt={item.name} />
+                          <DrinkPhoto src={item.photo} alt={item.name} position={item.photoPosition} />
 
                           <p className="font-serif font-semibold text-[#4A3222] text-xl mb-3">{item.name}</p>
 
@@ -391,7 +445,7 @@ export default function Home() {
                                 {item.sizes.map((size) => (
                                   <button
                                     key={size.id}
-                                    onClick={() => setSelectionSize(item.id, size.id)}
+                                    onClick={() => setSelectionSize(item, size.id)}
                                     className={`px-3 py-1.5 rounded-full text-sm font-medium border transition ${
                                       selection.size === size.id
                                         ? "bg-[#4A3222] text-white border-[#4A3222]"
@@ -414,7 +468,7 @@ export default function Home() {
                               <p className="text-xs font-semibold tracking-wider text-[#8A6F55] mb-2">COLD FOAM</p>
                               <div className="flex flex-wrap gap-2">
                                 <button
-                                  onClick={() => setSelectionAddOn(item.id, null)}
+                                  onClick={() => setSelectionAddOn(item, null)}
                                   className={`px-3 py-1.5 rounded-full text-sm font-medium border transition ${
                                     !selection.addOn
                                       ? "bg-[#D98A94] text-white border-[#D98A94]"
@@ -426,7 +480,7 @@ export default function Home() {
                                 {item.addOns.map((addOn) => (
                                   <button
                                     key={addOn.id}
-                                    onClick={() => setSelectionAddOn(item.id, addOn.id)}
+                                    onClick={() => setSelectionAddOn(item, addOn.id)}
                                     className={`px-3 py-1.5 rounded-full text-sm font-medium border transition ${
                                       selection.addOn === addOn.id
                                         ? "bg-[#D98A94] text-white border-[#D98A94]"
