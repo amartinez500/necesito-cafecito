@@ -136,13 +136,17 @@ create table if not exists order_items (
 alter table orders enable row level security;
 alter table order_items enable row level security;
 
--- Customers place orders anonymously (no login), so INSERT is open.
--- But SELECT is staff-only: a customer should never be able to read
--- back the list of orders and see other people's names/pickup times.
+-- No INSERT policy for anon/authenticated on purpose: order creation goes
+-- exclusively through /api/checkout and /api/orders, which validate every
+-- price server-side against the real menu (lib/menu.js) before writing
+-- anything, using the service_role key (which bypasses RLS entirely). Without
+-- this, anyone could insert an order directly via the public anon key with
+-- a made-up total — the app itself no longer being tricked doesn't help if
+-- the database still accepts a forged price straight from a raw HTTP request.
 drop policy if exists "Anyone can place an order" on orders;
-create policy "Anyone can place an order"
-  on orders for insert to anon, authenticated with check (true);
 
+-- SELECT is staff-only: a customer should never be able to read back the
+-- list of orders and see other people's names/pickup times.
 drop policy if exists "Only staff can view orders" on orders;
 create policy "Only staff can view orders"
   on orders for select to authenticated using (true);
@@ -151,9 +155,8 @@ drop policy if exists "Only staff can update orders" on orders;
 create policy "Only staff can update orders"
   on orders for update to authenticated using (true) with check (true);
 
+-- No INSERT policy here either, for the same reason as orders above.
 drop policy if exists "Anyone can add items to an order" on order_items;
-create policy "Anyone can add items to an order"
-  on order_items for insert to anon, authenticated with check (true);
 
 drop policy if exists "Only staff can view order items" on order_items;
 create policy "Only staff can view order items"

@@ -3,93 +3,7 @@
 import { useState, useEffect } from 'react';
 import Image from 'next/image';
 import { createClient } from '@/lib/supabase/client';
-
-const COLD_FOAM = [
-  { id: 'vanilla', name: 'Vanilla', price: 1.0 },
-  { id: 'caramel', name: 'Caramel', price: 1.0 },
-  { id: 'coconut', name: 'Coconut', price: 1.0 },
-  { id: 'cookie-butter', name: 'Cookie Butter', price: 1.0 },
-  { id: 'toasted-marshmallow', name: 'Toasted Marshmallow', price: 1.0 },
-];
-
-const MENU_CATEGORIES = [
-  {
-    id: 'iced-coffee',
-    name: 'Iced Coffees',
-    items: [
-      {
-        id: 1,
-        name: 'Mazapan',
-        photo: '/menu/mazapan-iced-coffee.jpg',
-        // Which part of the photo stays visible when it's cropped to fit the
-        // frame. 'center' by default — try 'top', 'bottom', 'left', 'right',
-        // or a percentage like '50% 20%' (the second number is vertical:
-        // lower % shows more of the top of the photo).
-        photoPosition: 'top',
-        sizes: [
-          { id: 's', label: '16oz', price: 4.0 },
-          { id: 'l', label: '24oz', price: 7.0 },
-        ],
-        addOns: COLD_FOAM,
-      },
-      {
-        id: 2,
-        name: 'Horchata',
-        photo: '/menu/horchata-iced-coffee.jpg',
-        photoPosition: 'center',
-        sizes: [
-          { id: 's', label: '16oz', price: 4.0 },
-          { id: 'l', label: '24oz', price: 7.0 },
-        ],
-        addOns: COLD_FOAM,
-      },
-    ],
-  },
-
-  //new category
-  {
-    id: 'iced-lattes',
-    name: 'Iced Lattes',
-    items: [
-      {
-        id: 3,
-        name: 'Cinnamon Roll Shaken Espresso',
-        photo: '/menu/cinnamon-roll-shaken-espresso.jpg',
-        photoPosition: 'center',
-        sizes: [{ id: 's', label: '16oz', price: 6.0 }],
-        addOns: COLD_FOAM,
-      },
-      {
-        id: 4,
-        name: 'Snickers Latte',
-        photo: '/menu/snickers-latte.jpg',
-        photoPosition: '60% 20%',
-        sizes: [{ id: 's', label: '16oz', price: 6.0 }],
-        addOns: COLD_FOAM,
-      },
-      {
-        id: 5,
-        name: 'Mazapan Latte',
-        photo: '/menu/mazapan-latte.jpg',
-        photoPosition: 'center',
-        sizes: [{ id: 's', label: '16oz', price: 6.0 }],
-        addOns: COLD_FOAM,
-      },
-      {
-        id: 6,
-        name: 'Horchata Latte',
-        photo: '/menu/horchata-latte.jpg',
-        photoPosition: 'center',
-        sizes: [{ id: 's', label: '16oz', price: 6.0 }],
-        addOns: COLD_FOAM,
-      },
-    ],
-  },
-];
-
-// Flattened view of every item across every category, for quick lookups
-// by id (cart entries only store an itemId, not which category it's in).
-const ALL_ITEMS = MENU_CATEGORIES.flatMap((category) => category.items);
+import { MENU_CATEGORIES, ALL_ITEMS } from '@/lib/menu';
 
 /////////////////////////////////////////////////////////////////////
 /////////////////////////////////////////////////////////////////////
@@ -288,7 +202,6 @@ export default function Home() {
           customerEmail: customerEmail.trim() || null,
           pickupTime: pickupTime.toISOString(),
           orderItems,
-          total,
         }),
       });
 
@@ -307,34 +220,21 @@ export default function Home() {
       return;
     }
 
-    // Pay at counter: no Stripe involved, insert directly like before.
-    const supabase = createClient();
-
-    // Generate the order's id ourselves and send it in the insert.
-    // Customers aren't allowed to read orders back (staff-only, for
-    // privacy), so we can't ask the database to hand the id back to us.
-    const orderId = crypto.randomUUID();
-
-    const { error } = await supabase.from('orders').insert({
-      id: orderId,
-      customer_name: customerName,
-      customer_email: customerEmail.trim() || null,
-      pickup_time: pickupTime.toISOString(),
-      payment_method: paymentMethod,
-      total,
+    // Pay at counter: no Stripe involved, but same server-side price
+    // validation as the online path — this route re-derives every price
+    // from the real menu rather than trusting what the browser sends.
+    const response = await fetch('/api/orders', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        customerName,
+        customerEmail: customerEmail.trim() || null,
+        pickupTime: pickupTime.toISOString(),
+        orderItems,
+      }),
     });
 
-    if (error) {
-      setSubmitError('Something went wrong placing your order. Please try again.');
-      setIsSubmitting(false);
-      return;
-    }
-
-    const { error: itemsError } = await supabase
-      .from('order_items')
-      .insert(orderItems.map((item) => ({ ...item, order_id: orderId })));
-
-    if (itemsError) {
+    if (!response.ok) {
       setSubmitError('Something went wrong placing your order. Please try again.');
       setIsSubmitting(false);
       return;

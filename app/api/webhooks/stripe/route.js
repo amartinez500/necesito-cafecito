@@ -24,10 +24,16 @@ export async function POST(request) {
 
     if (orderId) {
       const supabase = createAdminClient();
+      // Stripe can and does redeliver the same event more than once. The
+      // status filter makes this idempotent: if a redelivery arrives after
+      // staff already advanced the order (e.g. to 'brewing'), it won't get
+      // silently reverted back to 'new'. payment_status is safe to always
+      // set — 'paid' twice is harmless.
       await supabase
         .from('orders')
         .update({ payment_status: 'paid', status: 'new' })
-        .eq('id', orderId);
+        .eq('id', orderId)
+        .eq('status', 'awaiting_payment');
     }
   }
 
