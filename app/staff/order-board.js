@@ -96,6 +96,7 @@ function OrderCard({ order, column }) {
           {new Date(order.pickup_time).toLocaleTimeString([], {
             hour: 'numeric',
             minute: '2-digit',
+            timeZone: 'America/Chicago',
           })}
         </p>
       </div>

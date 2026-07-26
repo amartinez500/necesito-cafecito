@@ -271,7 +271,11 @@ export default function Home() {
             Thanks {customerName}!{' '}
             {paymentMethod === 'online' ? 'Paid online.' : 'Pay at pickup.'} Pickup
             around{' '}
-            {pickupTime.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}.
+            {pickupTime.toLocaleTimeString([], {
+              hour: 'numeric',
+              minute: '2-digit',
+              timeZone: 'America/Chicago',
+            })}.
           </p>
           <button
             onClick={resetOrder}
@@ -536,6 +540,7 @@ export default function Home() {
                   {time.toLocaleTimeString([], {
                     hour: "numeric",
                     minute: "2-digit",
+                    timeZone: "America/Chicago",
                   })}
                 </option>
               ))}
