@@ -244,6 +244,20 @@ export default function Home() {
     setOrderPlaced(true);
   }
 
+  // Takes the page back to a fresh, empty menu — used by the "Back to Home"
+  // button on the confirmation screen below.
+  function resetOrder() {
+    setCart([]);
+    setSelections({});
+    setOpenCategory(null);
+    setCustomerName('');
+    setCustomerEmail('');
+    setPaymentMethod(null);
+    setPickupTime(null);
+    setOrderPlaced(false);
+    setSubmitError(null);
+  }
+
   //To show a confirmation screen instead of the new menu, once submitted
 
   if (orderPlaced) {
@@ -253,12 +267,18 @@ export default function Home() {
           <h1 className="font-serif text-3xl font-semibold text-[#4A3222] mb-2">
             Order sent! ☕
           </h1>
-          <p className="text-sm text-[#8A6F55]">
+          <p className="text-sm text-[#8A6F55] mb-6">
             Thanks {customerName}!{' '}
             {paymentMethod === 'online' ? 'Paid online.' : 'Pay at pickup.'} Pickup
             around{' '}
             {pickupTime.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}.
           </p>
+          <button
+            onClick={resetOrder}
+            className="px-6 py-3 rounded-lg text-sm font-medium bg-[#4A3222] text-white active:scale-95 transition"
+          >
+            Back to Home
+          </button>
         </div>
       </main>
     );

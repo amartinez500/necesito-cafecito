@@ -1,3 +1,5 @@
+import Link from 'next/link';
+
 // A plain Server Component (no 'use client') — this page has no
 // interactivity, so it doesn't need to ship any JS to the browser at all.
 //
@@ -13,9 +15,17 @@ export default function OrderConfirmedPage() {
         <h1 className="font-serif text-3xl font-semibold text-[#4A3222] mb-2">
           Payment received! ☕
         </h1>
-        <p className="text-sm text-[#8A6F55]">
+        <p className="text-sm text-[#8A6F55] mb-6">
           Thanks for your order — we&apos;ll have it ready for pickup at your selected time.
         </p>
+        {/* next/link — Next.js's version of an <a> tag, for navigating
+            between pages in the app. */}
+        <Link
+          href="/"
+          className="inline-block px-6 py-3 rounded-lg text-sm font-medium bg-[#4A3222] text-white active:scale-95 transition"
+        >
+          Back to Home
+        </Link>
       </div>
     </main>
   );
